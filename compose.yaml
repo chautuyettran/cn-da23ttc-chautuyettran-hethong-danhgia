@@ -1,0 +1,91 @@
+services:
+  mongo:
+    image: mongo:8.0
+    restart: unless-stopped
+    command:
+      - sh
+      - -c
+      - umask 077 && printf '%s' "$$MONGO_REPLICA_KEY" > /tmp/mongodb-keyfile.new && chown mongodb:mongodb /tmp/mongodb-keyfile.new && chmod 400 /tmp/mongodb-keyfile.new && mv -f /tmp/mongodb-keyfile.new /tmp/mongodb-keyfile && exec docker-entrypoint.sh mongod --replSet rs0 --bind_ip_all --keyFile /tmp/mongodb-keyfile
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_ROOT_USERNAME:?Set MONGO_ROOT_USERNAME in .env}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD:?Set MONGO_ROOT_PASSWORD in .env}
+      MONGO_INITDB_DATABASE: teaching_quality
+      MONGO_APP_USERNAME: ${MONGO_APP_USERNAME:?Set MONGO_APP_USERNAME in .env}
+      MONGO_APP_PASSWORD: ${MONGO_APP_PASSWORD:?Set MONGO_APP_PASSWORD in .env}
+      MONGO_REPLICA_KEY: ${MONGO_REPLICA_KEY:?Set a random MONGO_REPLICA_KEY in .env}
+    volumes:
+      - mongo_data:/data/db
+      - ./database/init-mongo.js:/docker-entrypoint-initdb.d/10-create-app-user.js:ro
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          mongosh --quiet --host localhost
+          --username "$$MONGO_INITDB_ROOT_USERNAME"
+          --password "$$MONGO_INITDB_ROOT_PASSWORD"
+          --authenticationDatabase admin
+          --eval "try { if (rs.status().myState !== 1) quit(1); } catch (error) { rs.initiate({_id:'rs0',members:[{_id:0,host:'mongo:27017'}]}); quit(1); }"
+      interval: 5s
+      timeout: 10s
+      retries: 30
+      start_period: 20s
+    networks:
+      - app_network
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      MONGODB_URI: "mongodb://${MONGO_APP_USERNAME}:${MONGO_APP_PASSWORD}@mongo:27017/teaching_quality?authSource=teaching_quality&replicaSet=rs0"
+      JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in .env}
+      COOKIE_SECURE: ${COOKIE_SECURE:-false}
+      MIN_REPORT_RESPONSES: ${MIN_REPORT_RESPONSES:-5}
+      SEED_STUDENT_EMAIL: ${SEED_STUDENT_EMAIL:-}
+    ports:
+      - "${PORT:-3000}:3000"
+    depends_on:
+      mongo:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:3000/api/health').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    networks:
+      - app_network
+
+  admin-provision:
+    profiles:
+      - tools
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: "no"
+    environment:
+      NODE_ENV: production
+      MONGODB_URI: "mongodb://${MONGO_APP_USERNAME}:${MONGO_APP_PASSWORD}@mongo:27017/teaching_quality?authSource=teaching_quality&replicaSet=rs0"
+      ADMIN_NAME: ${ADMIN_NAME:-}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
+    command: ["npm", "run", "provision-admin"]
+    depends_on:
+      mongo:
+        condition: service_healthy
+    networks:
+      - app_network
+
+volumes:
+  mongo_data:
+
+networks:
+  app_network:
+    driver: bridge

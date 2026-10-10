@@ -1,0 +1,30 @@
+{
+  "name": "teaching-quality-evaluation",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Teaching Quality Evaluation and Feedback System Using Chart.js and Express.js",
+  "main": "backend/app.js",
+  "scripts": {
+    "start": "node backend/app.js",
+    "dev": "node --watch backend/app.js",
+    "create-admin": "node backend/scripts/create-admin.js",
+    "provision-admin": "node backend/scripts/provision-admin.js",
+    "reset-admin-password": "node backend/scripts/reset-admin-password.js",
+    "provision-student": "node backend/scripts/provision-student.js",
+    "seed": "node database/seed.js",
+    "check": "node --check backend/app.js && node --check backend/routes/api.js && node --check backend/routes/auth.js && node --check backend/middleware/auth.js && node --check backend/config/db.js && node --check backend/models/index.js && node --check backend/validators/account.js && node --check backend/validators/policy.js && node --check backend/services/authentication.js && node --check backend/services/student-provisioning.js && node --check backend/services/administrator-provisioning.js && node --check backend/utils/csv.js && node --check backend/scripts/create-admin.js && node --check backend/scripts/provision-admin.js && node --check backend/scripts/reset-admin-password.js && node --check backend/scripts/provision-student.js && node --check database/seed.js && node --check js/app.js && node --check js/login.js && node --check js/dashboard.js && node --check js/evaluation.js && node --check js/admin.js && node --check js/reports.js",
+    "test": "node --test test/*.test.js"
+  },
+  "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "cookie-parser": "^1.4.7",
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2",
+    "express-rate-limit": "^7.5.0",
+    "helmet": "^8.0.0",
+    "jsonwebtoken": "^9.0.2",
+    "mongoose": "^8.9.5",
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {}
+}

@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Hệ thống đánh giá chất lượng giảng dạy và phản hồi sinh viên">
+  <title>Tổng quan | Đánh giá chất lượng giảng dạy</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="/css/styles.css" rel="stylesheet">
+</head>
+<body>
+  <nav class="navbar navbar-expand-lg navbar-dark app-nav">
+    <div class="container">
+      <a class="navbar-brand fw-semibold d-flex align-items-center gap-2" href="/">
+        <img class="brand-logo" src="/assets/images/tvu-logo.webp" alt="Logo Trường Đại học Trà Vinh">
+        <span>Đánh giá giảng dạy</span>
+      </a>
+      <div class="d-flex align-items-center gap-3">
+        <span class="text-white-50 small" id="user-greeting"></span>
+        <a class="btn btn-outline-light btn-sm d-none" id="admin-link" href="/main/admin.html">Quản trị</a>
+        <a class="btn btn-outline-light btn-sm d-none" id="reports-link" href="/main/reports.html">Báo cáo</a>
+        <button class="btn btn-light btn-sm" data-logout>Đăng xuất</button>
+      </div>
+    </div>
+  </nav>
+  <main class="container py-4 py-lg-5">
+    <div class="d-flex flex-wrap justify-content-between align-items-end gap-3 mb-4">
+      <div><p class="eyebrow mb-1">BẢNG ĐIỀU KHIỂN</p><h1 class="h2 mb-1">Xin chào <span id="user-name">bạn</span></h1>
+        <p class="text-secondary mb-0" id="dashboard-description">Thông tin được cập nhật trực tiếp từ hệ thống.</p></div>
+      <a class="btn btn-primary d-none" id="manage-button" href="/main/admin.html">Quản lý dữ liệu</a>
+    </div>
+    <div id="alert-area" aria-live="polite"></div>
+    <section id="overview-section" class="row g-3 mb-4">
+      <div class="col-6 col-lg"><article class="stat-card"><span>Học phần</span><strong id="stat-courses">—</strong></article></div>
+      <div class="col-6 col-lg"><article class="stat-card"><span>Lớp học</span><strong id="stat-classes">—</strong></article></div>
+      <div class="col-6 col-lg"><article class="stat-card"><span>Giảng viên</span><strong id="stat-lecturers">—</strong></article></div>
+      <div class="col-6 col-lg"><article class="stat-card"><span>Khảo sát đang mở</span><strong id="stat-surveys">—</strong></article></div>
+      <div class="col-6 col-lg"><article class="stat-card"><span>Lượt phản hồi</span><strong id="stat-responses">—</strong></article></div>
+      <div class="col-6 col-lg"><article class="stat-card"><span>Điểm trung bình</span><strong id="stat-average">—</strong></article></div>
+    </section>
+    <section id="student-section" class="d-none">
+      <div class="section-heading"><div><h2 class="h4">Khảo sát dành cho bạn</h2><p class="text-secondary">Mỗi khảo sát chỉ gửi được một lần. Câu trả lời được lưu ẩn danh.</p></div></div>
+      <div id="survey-list" class="row g-3"></div>
+    </section>
+    <section id="charts-section" class="row g-4">
+      <div class="col-lg-8"><article class="panel h-100"><div class="section-heading"><div><h2 class="h5">Điểm trung bình theo tiêu chí</h2><p class="text-secondary small mb-0">Dữ liệu khảo sát thực tế, chỉ hiển thị khi đạt ngưỡng bảo vệ riêng tư.</p></div></div><div class="chart-wrap"><canvas id="overview-chart" aria-label="Biểu đồ điểm trung bình theo tiêu chí"></canvas></div></article></div>
+      <div class="col-lg-4"><article class="panel h-100"><h2 class="h5">Phân bố mức đánh giá</h2><div class="chart-wrap"><canvas id="rating-chart" aria-label="Biểu đồ phân bố điểm từ 1 đến 5"></canvas></div></article></div>
+      <div class="col-lg-8"><article class="panel h-100"><h2 class="h5">Điểm trung bình theo giảng viên</h2><div class="chart-wrap"><canvas id="lecturer-chart" aria-label="Biểu đồ điểm trung bình giảng viên"></canvas></div></article></div>
+      <div class="col-lg-4"><article class="panel h-100"><h2 class="h5">Báo cáo và lọc</h2><p class="text-secondary">Xem hồ sơ giảng dạy, học kỳ và kết quả chi tiết.</p><a class="btn btn-outline-primary" href="/main/reports.html">Mở báo cáo chi tiết</a></article></div>
+    </section>
+  </main>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+  <script src="/js/app.js"></script>
+  <script src="/js/dashboard.js"></script>
+</body>
+</html>
