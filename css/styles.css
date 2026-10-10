@@ -12,9 +12,19 @@ body {
   font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
 }
 
-.app-nav { background: var(--navy); }
-.navbar-brand { letter-spacing: .01em; }
-.brand-logo { display: block; width: 42px; height: 42px; flex: 0 0 auto; object-fit: contain; }
+.app-nav { 
+  background: 
+  var(--navy); 
+}
+.navbar-brand { 
+  letter-spacing: .01em; 
+}
+.brand-logo { 
+  display: block; 
+  width: 42px; 
+  height: 42px; 
+  flex: 0 0 auto; 
+  object-fit: contain; }
 .login-brand { display: flex; align-items: center; gap: .8rem; }
 .login-logo { display: block; width: clamp(104px, 34vw, 156px); height: auto; max-height: 156px; object-fit: contain; }
 .page-heading, .report-heading { display: flex; align-items: center; gap: 1rem; }
