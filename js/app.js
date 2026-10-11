@@ -1,14 +1,23 @@
 (() => {
   async function api(url, options = {}) {
+    const isFormData = typeof FormData !== 'undefined' && options.body instanceof FormData;
     const response = await fetch(url, {
       credentials: 'same-origin',
-      headers: { 'Content-Type': 'application/json', ...(options.headers || {}) },
+      headers: { ...(isFormData ? {} : { 'Content-Type': 'application/json' }), ...(options.headers || {}) },
       ...options
     });
     const data = response.status === 204 ? {} : await response.json().catch(() => ({}));
     if (!response.ok) {
+      console.warn('API request failed:', {
+        endpoint: new URL(url, window.location.origin).pathname,
+        status: response.status
+      });
       const error = new Error(data.error || `Yêu cầu thất bại (${response.status}).`);
       error.status = response.status;
+      const retryAfterSeconds = Number(response.headers.get('Retry-After'));
+      if (Number.isFinite(retryAfterSeconds) && retryAfterSeconds > 0) {
+        error.retryAfterSeconds = retryAfterSeconds;
+      }
       throw error;
     }
     return data;

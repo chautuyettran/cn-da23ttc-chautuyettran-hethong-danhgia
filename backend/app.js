@@ -4,11 +4,14 @@ const path = require('path');
 const express = require('express');
 const helmet = require('helmet');
 const cookieParser = require('cookie-parser');
-const rateLimit = require('express-rate-limit');
 const mongoose = require('mongoose');
 const { connectDatabase } = require('./config/db');
 const models = require('./models');
 const authRoutes = require('./routes/auth');
+const recoveryRoutes = require('./routes/recovery');
+const studentProfileRoutes = require('./routes/student-profile');
+const lecturerRoutes = require('./routes/lecturer');
+const lecturerProfileRoutes = studentProfileRoutes.createProfileRouter('lecturer');
 const apiRoutes = require('./routes/api');
 
 const required = ['MONGODB_URI', 'JWT_SECRET'];
@@ -22,6 +25,7 @@ if (!Number.isInteger(reportMinimum) || reportMinimum < 1 || reportMinimum > 100
 
 const app = express();
 app.disable('x-powered-by');
+app.set('trust proxy', false);
 app.use(helmet({
   contentSecurityPolicy: {
     directives: {
@@ -45,10 +49,11 @@ app.get('/api/health', (req, res) => {
   const ready = mongoose.connection.readyState === 1;
   return res.status(ready ? 200 : 503).json({ status: ready ? 'ok' : 'unavailable', database: ready ? 'connected' : 'disconnected' });
 });
-app.use('/api/auth', rateLimit({
-  windowMs: 15 * 60 * 1000, limit: 20, standardHeaders: 'draft-7', legacyHeaders: false,
-  message: { error: 'Quá nhiều lần thử. Vui lòng thử lại sau.' }
-}), authRoutes);
+app.use('/api/auth', authRoutes);
+app.use('/api/auth/recovery', recoveryRoutes);
+app.use('/api/student/profile', studentProfileRoutes);
+app.use('/api/lecturer', lecturerRoutes);
+app.use('/api/lecturer/profile', lecturerProfileRoutes);
 app.use('/api', apiRoutes);
 app.use('/api', (req, res) => res.status(404).json({ error: 'Không tìm thấy API.' }));
 

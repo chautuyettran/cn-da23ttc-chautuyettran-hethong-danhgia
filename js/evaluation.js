@@ -7,7 +7,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       return;
     }
     const surveyId = new URLSearchParams(window.location.search).get('id');
-    if (!surveyId || !/^\d+$/.test(surveyId)) throw new Error('Liên kết khảo sát không hợp lệ.');
+    if (!surveyId || !/^[a-f\d]{24}$/i.test(surveyId)) throw new Error('Liên kết khảo sát không hợp lệ.');
     const { survey, questions } = await App.api(`/api/surveys/${encodeURIComponent(surveyId)}`);
     document.getElementById('survey-title').textContent = survey.title;
     document.getElementById('survey-description').textContent = `${survey.course_title} · ${survey.lecturer_name}. ${survey.description || ''}`;
@@ -58,8 +58,21 @@ document.addEventListener('DOMContentLoaded', async () => {
           method: 'POST',
           body: JSON.stringify({ answers, feedback: form.elements.feedback.value.trim() })
         });
-        App.showAlert(result.message, 'success');
-        form.replaceChildren();
+        App.showAlert(
+          `${result.message} Lượt đã gửi: ${result.attemptsUsed}/${result.maxSubmissions}; còn ${result.attemptsRemaining}.`,
+          'success'
+        );
+        if (result.attemptsRemaining > 0) {
+          App.setBusy(button, false);
+          button.textContent = 'Gửi lại đánh giá';
+        } else {
+          form.replaceChildren();
+          const back = document.createElement('a');
+          back.className = 'btn btn-outline-primary';
+          back.href = '/';
+          back.textContent = 'Quay lại danh sách khảo sát';
+          form.append(back);
+        }
       } catch (error) {
         App.showAlert(error.message);
         App.setBusy(button, false);

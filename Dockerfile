@@ -7,6 +7,7 @@ COPY package*.json ./
 RUN npm ci --omit=dev && npm cache clean --force
 
 COPY --chown=node:node . .
+RUN mkdir -p /app/uploads/avatars && chown -R node:node /app/uploads
 USER node
 
 EXPOSE 3000

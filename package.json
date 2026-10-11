@@ -11,8 +11,13 @@
     "provision-admin": "node backend/scripts/provision-admin.js",
     "reset-admin-password": "node backend/scripts/reset-admin-password.js",
     "provision-student": "node backend/scripts/provision-student.js",
+    "provision-lecturer": "node backend/scripts/provision-lecturer.js",
+    "provision-test-lecturer": "node backend/scripts/provision-test-lecturer.js",
+    "test-lecturer-provision": "node backend/scripts/provision-test-lecturer.js",
+    "reset-test-lecturer-password": "node backend/scripts/reset-test-lecturer-password.js",
     "seed": "node database/seed.js",
-    "check": "node --check backend/app.js && node --check backend/routes/api.js && node --check backend/routes/auth.js && node --check backend/middleware/auth.js && node --check backend/config/db.js && node --check backend/models/index.js && node --check backend/validators/account.js && node --check backend/validators/policy.js && node --check backend/services/authentication.js && node --check backend/services/student-provisioning.js && node --check backend/services/administrator-provisioning.js && node --check backend/utils/csv.js && node --check backend/scripts/create-admin.js && node --check backend/scripts/provision-admin.js && node --check backend/scripts/reset-admin-password.js && node --check backend/scripts/provision-student.js && node --check database/seed.js && node --check js/app.js && node --check js/login.js && node --check js/dashboard.js && node --check js/evaluation.js && node --check js/admin.js && node --check js/reports.js",
+    "test:integration": "node --test test/*.integration.test.js",
+    "check": "node --check backend/app.js && node --check backend/routes/api.js && node --check backend/routes/auth.js && node --check backend/routes/recovery.js && node --check backend/routes/lecturer.js && node --check backend/routes/student-profile.js && node --check backend/middleware/auth.js && node --check backend/middleware/rate-limit.js && node --check backend/config/db.js && node --check backend/models/index.js && node --check backend/validators/account.js && node --check backend/validators/policy.js && node --check backend/services/authentication.js && node --check backend/services/password-recovery.js && node --check backend/services/sms-provider.js && node --check backend/services/student-provisioning.js && node --check backend/services/administrator-provisioning.js && node --check backend/services/lecturer-provisioning.js && node --check backend/utils/csv.js && node --check backend/scripts/create-admin.js && node --check backend/scripts/provision-admin.js && node --check backend/scripts/reset-admin-password.js && node --check backend/scripts/provision-student.js && node --check backend/scripts/provision-lecturer.js && node --check backend/scripts/provision-test-lecturer.js && node --check backend/scripts/reset-test-lecturer-password.js && node --check database/seed.js && node --check js/app.js && node --check js/login.js && node --check js/recovery.js && node --check js/dashboard.js && node --check js/profile.js && node --check js/lecturer.js && node --check js/evaluation.js && node --check js/admin.js && node --check js/reports.js && node --check test/auth-rate-limits.test.js && node --check test/student-profile.integration.test.js && node --check test/password-recovery.test.js && node --check test/password-recovery.integration.test.js && node --check test/mongodb.integration.test.js && node --check test/lecturer-provisioning.test.js",
     "test": "node --test test/*.test.js"
   },
   "dependencies": {
@@ -24,7 +29,9 @@
     "helmet": "^8.0.0",
     "jsonwebtoken": "^9.0.2",
     "mongoose": "^8.9.5",
+    "multer": "^2.4.0",
+    "sharp": "^0.35.5",
+    "svg-captcha": "^1.4.0",
     "zod": "^3.24.1"
-  },
-  "devDependencies": {}
+  }
 }

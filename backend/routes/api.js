@@ -19,7 +19,11 @@ const resources = {
   lecturers: { model: models.Lecturer, fields: ['full_name', 'department', 'email'] },
   courses: { model: models.Course, fields: ['code', 'title', 'description'] },
   classes: { model: models.ClassSection, fields: ['code', 'name', 'academic_year', 'semester'] },
-  questions: { model: models.SurveyQuestion, fields: ['text', 'category', 'is_active'] }
+  questions: { model: models.SurveyQuestion, fields: ['text', 'category', 'is_active'] },
+  'lecturer-questions': {
+    model: models.LecturerQuestion,
+    fields: ['text', 'category', 'description', 'is_required', 'is_active']
+  }
 };
 
 function badRequest(res, error) {
@@ -131,6 +135,7 @@ router.get('/surveys/available', requireRole('student'), async (req, res, next) 
           submitted: Boolean(record && String(record.survey_id) === String(period._id)) || legacySubmission,
           attemptsUsed,
           attemptsRemaining: Math.max(0, policy.max_submissions - attemptsUsed),
+          maxSubmissions: policy.max_submissions,
           allowRevisions: policy.allow_revisions
         };
       })
@@ -177,15 +182,37 @@ router.get('/surveys/:id', requireRole('student'), async (req, res, next) => {
     if (attemptsUsed && !policy.allow_revisions) {
       return res.status(409).json({ error: 'Bạn đã gửi đánh giá cho khảo sát này.' });
     }
-    const questions = await models.SurveyQuestion.find({
-      _id: { $in: period.questions.map((entry) => entry.question_id) }
-    }).lean();
-    const questionById = new Map(questions.map((question) => [String(question._id), question]));
-    const ordered = period.questions
-      .sort((a, b) => a.position - b.position)
-      .map((entry) => questionById.get(String(entry.question_id)))
-      .filter(Boolean)
-      .map((question) => ({ id: String(question._id), text: question.text, category: question.category }));
+    const questions = await models.SurveyQuestion.find({ is_active: true })
+      .sort({ createdAt: 1, _id: 1 }).lean();
+    const positionById = new Map(period.questions.map((entry) => [String(entry.question_id), entry.position]));
+    const standardQuestions = questions
+      .sort((a, b) => (positionById.get(String(a._id)) || Number.MAX_SAFE_INTEGER) -
+        (positionById.get(String(b._id)) || Number.MAX_SAFE_INTEGER))
+      .map((question) => ({
+        id: String(question._id), text: question.text, category: question.category,
+        required: true, additional: false
+      }));
+    const additionalQuestions = await models.LecturerQuestion.find({
+      lecturer_id: period.assignment_id.lecturer_id._id,
+      assignment_id: period.assignment_id._id,
+      is_active: true,
+      $or: [
+        { survey_id: period._id },
+        { survey_id: null, createdAt: { $lte: period.starts_at } },
+        { survey_id: { $exists: false }, createdAt: { $lte: period.starts_at } }
+      ]
+    }).sort({ createdAt: 1 }).lean();
+    const ordered = [
+      ...standardQuestions,
+      ...additionalQuestions.map((question) => ({
+        id: String(question._id),
+        text: question.text,
+        category: question.category,
+        description: question.description,
+        required: question.is_required,
+        additional: true
+      }))
+    ];
     if (!ordered.length) return res.status(409).json({ error: 'Khảo sát chưa có câu hỏi.' });
     return res.json({
       survey: {
@@ -211,13 +238,14 @@ router.post('/surveys/:id/submit', requireRole('student'), async (req, res, next
     answers: z.array(z.object({
       questionId: objectIdSchema,
       score: z.coerce.number().int().min(1).max(5)
-    })).min(1).max(100),
+    })).max(100),
     feedback: z.string().trim().max(2000).optional().default('')
   });
   const parsed = schema.safeParse(req.body);
   if (!surveyId || !parsed.success) return badRequest(res, 'Dữ liệu đánh giá không hợp lệ (điểm phải từ 1 đến 5).');
 
   let session;
+  let submissionStatus;
   try {
     session = await mongoose.startSession();
     await session.withTransaction(async () => {
@@ -238,16 +266,37 @@ router.post('/surveys/:id/submit', requireRole('student'), async (req, res, next
         error.status = 403;
         throw error;
       }
-      const allowedIds = new Set(period.questions.map((entry) => String(entry.question_id)));
+      const standardQuestions = await models.SurveyQuestion.find({ is_active: true })
+        .sort({ createdAt: 1, _id: 1 }).session(session).lean();
+      const standardIds = new Set(standardQuestions.map((question) => String(question._id)));
+      const lecturerQuestions = await models.LecturerQuestion.find({
+        lecturer_id: assignment.lecturer_id,
+        assignment_id: assignment._id,
+        is_active: true,
+        $or: [
+          { survey_id: period._id },
+          { survey_id: null, createdAt: { $lte: period.starts_at } },
+          { survey_id: { $exists: false }, createdAt: { $lte: period.starts_at } }
+        ]
+      }).session(session).lean();
+      const questionById = new Map([
+        ...standardQuestions.map((question) => [String(question._id), question]),
+        ...lecturerQuestions.map((question) => [String(question._id), question])
+      ]);
+      const allowedIds = new Set(questionById.keys());
       const questionIds = parsed.data.answers.map((answer) => answer.questionId);
-      if (new Set(questionIds).size !== questionIds.length || questionIds.length !== allowedIds.size ||
-          questionIds.some((questionId) => !allowedIds.has(questionId))) {
-        const error = new Error('Cần trả lời mỗi câu hỏi của khảo sát đúng một lần.');
+      const requiredIds = new Set([
+        ...standardIds,
+        ...lecturerQuestions.filter((question) => question.is_required).map((question) => String(question._id))
+      ]);
+      if (new Set(questionIds).size !== questionIds.length ||
+          questionIds.some((questionId) => !allowedIds.has(questionId)) ||
+          [...requiredIds].some((questionId) => !questionIds.includes(questionId)) ||
+          questionIds.length === 0) {
+        const error = new Error('Cần trả lời đầy đủ câu hỏi bắt buộc và không gửi câu hỏi ngoài phiếu.');
         error.status = 400;
         throw error;
       }
-      const questions = await models.SurveyQuestion.find({ _id: { $in: questionIds } }).session(session).lean();
-      const questionById = new Map(questions.map((question) => [String(question._id), question]));
       const lecturer = await models.Lecturer.findById(assignment.lecturer_id).session(session);
       if (!lecturer) throw new Error('Không tìm thấy hồ sơ giảng viên.');
       const policy = await getEvaluationPolicy(session);
@@ -307,8 +356,16 @@ router.post('/surveys/:id/submit', requireRole('student'), async (req, res, next
       record.attempts += 1;
       record.submitted_at = new Date();
       await record.save({ session });
+      submissionStatus = {
+        attemptsUsed: record.attempts,
+        attemptsRemaining: Math.max(0, policy.max_submissions - record.attempts),
+        maxSubmissions: policy.max_submissions
+      };
     }, { readConcern: { level: 'snapshot' }, writeConcern: { w: 'majority' } });
-    return res.status(201).json({ message: 'Cảm ơn bạn đã gửi đánh giá ẩn danh.' });
+    return res.status(201).json({
+      message: 'Cảm ơn bạn đã gửi đánh giá ẩn danh.',
+      ...submissionStatus
+    });
   } catch (error) {
     if (error.status) return res.status(error.status).json({ error: error.message });
     if (duplicateError(error)) return res.status(409).json({ error: 'Bạn đã gửi đánh giá cho khảo sát này.' });
@@ -524,7 +581,9 @@ router.get('/admin/:resource', requireRole('admin'), async (req, res, next) => {
       const users = await models.User.find().sort({ createdAt: -1 }).lean();
       return res.json({ items: users.map((user) => ({
         id: String(user._id), full_name: user.full_name, email: user.email,
-        role: user.role, lecturer_id: user.lecturer_id ? String(user.lecturer_id) : '', is_active: user.is_active
+        role: user.role, lecturer_id: user.lecturer_id ? String(user.lecturer_id) : '', is_active: user.is_active,
+        phone_number: user.role === 'student' ? user.phone_number : '',
+        phone_verified: user.role === 'student' && user.phone_verified
       })) });
     }
     if (req.params.resource === 'students') {
@@ -535,6 +594,26 @@ router.get('/admin/:resource', requireRole('admin'), async (req, res, next) => {
     }
     const resource = resources[req.params.resource];
     if (!resource) return res.status(404).json({ error: 'Danh mục quản lý không tồn tại.' });
+    if (req.params.resource === 'lecturer-questions') {
+      const items = await models.LecturerQuestion.find()
+        .populate('lecturer_id', 'full_name')
+        .populate({
+          path: 'assignment_id',
+          populate: [{ path: 'course_id', select: 'title' }, { path: 'class_id', select: 'name' }]
+        })
+        .sort({ createdAt: -1 }).lean();
+      return res.json({ items: items.map((item) => ({
+        id: String(item._id),
+        lecturer_name: item.lecturer_id?.full_name || '',
+        course_title: item.assignment_id?.course_id?.title || '',
+        class_name: item.assignment_id?.class_id?.name || '',
+        text: item.text,
+        category: item.category,
+        description: item.description,
+        is_required: item.is_required,
+        is_active: item.is_active
+      })) });
+    }
     const items = await resource.model.find().sort({ createdAt: -1 }).lean();
     return res.json({ items: items.map(serialize) });
   } catch (error) {
@@ -550,7 +629,9 @@ router.post('/admin/:resource', requireRole('admin'), async (req, res, next) => 
         full_name: nameSchema, email: z.string().email().max(255),
         password: managementPasswordSchema,
         role: z.enum(['admin', 'lecturer', 'student']),
-        lecturer_id: objectIdSchema.nullable().optional()
+        lecturer_id: objectIdSchema.nullable().optional(),
+        phone_number: z.union([z.string().regex(/^\+[1-9]\d{7,14}$/), z.literal('')]).optional().default(''),
+        phone_verified: z.boolean().optional().default(false)
       }).safeParse(req.body);
       if (!parsed.success) return badRequest(res, `Thông tin tài khoản không hợp lệ; mật khẩu cần tối thiểu ${MANAGEMENT_PASSWORD_MIN_LENGTH} ký tự.`);
       const email = normalizeEmail(parsed.data.email);
@@ -560,13 +641,21 @@ router.post('/admin/:resource', requireRole('admin'), async (req, res, next) => 
       if ((parsed.data.role === 'lecturer') !== Boolean(parsed.data.lecturer_id)) {
         return badRequest(res, 'Chỉ tài khoản giảng viên được liên kết với hồ sơ giảng viên.');
       }
+      if (parsed.data.role !== 'student' && (parsed.data.phone_number || parsed.data.phone_verified)) {
+        return badRequest(res, 'Chỉ tài khoản sinh viên được đăng ký số điện thoại khôi phục.');
+      }
+      if (parsed.data.phone_verified && !parsed.data.phone_number) {
+        return badRequest(res, 'Cần nhập số điện thoại trước khi xác nhận đã xác minh.');
+      }
       if (parsed.data.lecturer_id && !(await models.Lecturer.exists({ _id: parsed.data.lecturer_id }))) {
         return badRequest(res, 'Không tìm thấy hồ sơ giảng viên được chọn.');
       }
       const user = await models.User.create({
         full_name: parsed.data.full_name, email,
         password_hash: await bcrypt.hash(parsed.data.password, 12), role: parsed.data.role,
-        lecturer_id: parsed.data.lecturer_id || null
+        lecturer_id: parsed.data.lecturer_id || null,
+        phone_number: parsed.data.role === 'student' ? parsed.data.phone_number : '',
+        phone_verified: parsed.data.role === 'student' && parsed.data.phone_verified
       });
       return res.status(201).json({ id: String(user._id), message: 'Đã tạo tài khoản.' });
     }
@@ -574,6 +663,14 @@ router.post('/admin/:resource', requireRole('admin'), async (req, res, next) => 
     if (!resource) return res.status(404).json({ error: 'Danh mục quản lý không tồn tại.' });
     const parsed = resourceSchema(req.params.resource, req.body);
     if (!parsed.success) return badRequest(res, parsed.error);
+    if (req.params.resource === 'questions') {
+      if (await models.SurveyPeriod.exists({ status: 'open' })) {
+        return res.status(409).json({ error: 'Không thể thay đổi câu hỏi dùng chung khi có khảo sát đang mở.' });
+      }
+      if (parsed.data.is_active && await models.SurveyQuestion.countDocuments({ is_active: true }) >= 100) {
+        return badRequest(res, 'Không thể có quá 100 câu hỏi chung đang hoạt động.');
+      }
+    }
     const item = await resource.model.create(parsed.data);
     return res.status(201).json({ id: String(item._id), message: 'Đã thêm dữ liệu.' });
   } catch (error) {
@@ -600,7 +697,9 @@ router.put('/admin/users/:id', requireRole('admin'), async (req, res, next) => {
     full_name: nameSchema, email: z.string().email().max(255),
     password: managementPasswordSchema.optional().or(z.literal('')),
     role: z.enum(['admin', 'lecturer', 'student']),
-    lecturer_id: objectIdSchema.nullable().optional()
+    lecturer_id: objectIdSchema.nullable().optional(),
+    phone_number: z.union([z.string().regex(/^\+[1-9]\d{7,14}$/), z.literal('')]).optional().default(''),
+    phone_verified: z.boolean().optional().default(false)
   }).safeParse(req.body);
   if (!id || !parsed.success) return badRequest(res, 'Thông tin tài khoản không hợp lệ.');
   const email = normalizeEmail(parsed.data.email);
@@ -610,6 +709,12 @@ router.put('/admin/users/:id', requireRole('admin'), async (req, res, next) => {
   if ((parsed.data.role === 'lecturer') !== Boolean(parsed.data.lecturer_id)) {
     return badRequest(res, 'Chỉ tài khoản giảng viên được liên kết với hồ sơ giảng viên.');
   }
+  if (parsed.data.role !== 'student' && (parsed.data.phone_number || parsed.data.phone_verified)) {
+    return badRequest(res, 'Chỉ tài khoản sinh viên được đăng ký số điện thoại khôi phục.');
+  }
+  if (parsed.data.phone_verified && !parsed.data.phone_number) {
+    return badRequest(res, 'Cần nhập số điện thoại trước khi xác nhận đã xác minh.');
+  }
   if (String(req.user.id) === String(id) && parsed.data.role !== 'admin') return badRequest(res, 'Không thể tự hạ quyền tài khoản đang đăng nhập.');
   try {
     if (parsed.data.lecturer_id && !(await models.Lecturer.exists({ _id: parsed.data.lecturer_id }))) {
@@ -617,10 +722,16 @@ router.put('/admin/users/:id', requireRole('admin'), async (req, res, next) => {
     }
     const update = {
       full_name: parsed.data.full_name, email,
-      role: parsed.data.role, lecturer_id: parsed.data.lecturer_id || null
+      role: parsed.data.role, lecturer_id: parsed.data.lecturer_id || null,
+      phone_number: parsed.data.role === 'student' ? parsed.data.phone_number : '',
+      phone_verified: parsed.data.role === 'student' && parsed.data.phone_verified
     };
-    if (parsed.data.password) update.password_hash = await bcrypt.hash(parsed.data.password, 12);
-    const result = await models.User.updateOne({ _id: id }, { $set: update }, { runValidators: true });
+    const updateOperation = { $set: update };
+    if (parsed.data.password) {
+      update.password_hash = await bcrypt.hash(parsed.data.password, 12);
+      updateOperation.$inc = { auth_version: 1 };
+    }
+    const result = await models.User.updateOne({ _id: id }, updateOperation, { runValidators: true });
     return result.matchedCount ? res.json({ message: 'Đã cập nhật tài khoản.' }) : res.status(404).json({ error: 'Không tìm thấy tài khoản.' });
   } catch (error) {
     return next(error);
@@ -635,6 +746,23 @@ router.put('/admin/:resource/:id', requireRole('admin'), async (req, res, next) 
     if (!resource) return res.status(404).json({ error: 'Danh mục quản lý không tồn tại.' });
     const parsed = resourceSchema(req.params.resource, req.body);
     if (!parsed.success) return badRequest(res, parsed.error);
+    if (req.params.resource === 'questions' && await models.SurveyPeriod.exists({ status: 'open' })) {
+      return res.status(409).json({ error: 'Không thể thay đổi câu hỏi dùng chung khi có khảo sát đang mở.' });
+    }
+    if (req.params.resource === 'questions' && parsed.data.is_active) {
+      const question = await models.SurveyQuestion.findById(id).select('is_active');
+      if (!question) return res.status(404).json({ error: 'Không tìm thấy dữ liệu.' });
+      if (!question.is_active && await models.SurveyQuestion.countDocuments({ is_active: true }) >= 100) {
+        return badRequest(res, 'Không thể có quá 100 câu hỏi chung đang hoạt động.');
+      }
+    }
+    if (req.params.resource === 'lecturer-questions') {
+      const question = await models.LecturerQuestion.findById(id).select('assignment_id survey_id createdAt');
+      if (!question) return res.status(404).json({ error: 'Không tìm thấy dữ liệu.' });
+      if (await lecturerQuestionHasOpenSurvey(question)) {
+        return res.status(409).json({ error: 'Không thể thay đổi câu hỏi khi đợt đánh giá đang mở.' });
+      }
+    }
     const result = await resource.model.updateOne({ _id: id }, { $set: parsed.data }, { runValidators: true });
     return result.matchedCount ? res.json({ message: 'Đã cập nhật dữ liệu.' }) : res.status(404).json({ error: 'Không tìm thấy dữ liệu.' });
   } catch (error) {
@@ -671,9 +799,21 @@ router.delete('/admin/:resource/:id', requireRole('admin'), async (req, res, nex
         models.TeachingAssignment.exists({ class_id: id }),
         models.Enrollment.exists({ class_id: id })
       ],
-      questions: [models.SurveyPeriod.exists({ 'questions.question_id': id })],
+      questions: [
+        models.SurveyPeriod.exists({ status: 'open' }),
+        models.SurveyPeriod.exists({ 'questions.question_id': id }),
+        models.Evaluation.exists({ 'answers.question_id': id })
+      ],
+      'lecturer-questions': [],
       assignments: [models.SurveyPeriod.exists({ assignment_id: id })]
     }[resource] || [];
+    if (resource === 'lecturer-questions') {
+      const question = await models.LecturerQuestion.findById(id).select('assignment_id survey_id createdAt');
+      if (!question) return res.status(404).json({ error: 'Không tìm thấy dữ liệu.' });
+      if (await lecturerQuestionHasOpenSurvey(question)) {
+        return res.status(409).json({ error: 'Không thể xóa câu hỏi khi đợt đánh giá đang mở.' });
+      }
+    }
     if (references.length && (await Promise.all(references)).some(Boolean)) {
       return res.status(409).json({ error: 'Dữ liệu đang được sử dụng và không thể xóa.' });
     }
@@ -743,25 +883,24 @@ router.post('/admin/surveys', requireRole('admin'), async (req, res, next) => {
     description: z.string().trim().max(2000).optional().default(''),
     starts_at: z.string().datetime(),
     ends_at: z.string().datetime(),
-    status: z.enum(['draft', 'open', 'closed']),
-    question_ids: z.array(objectIdSchema).min(1).max(100)
+    status: z.enum(['draft', 'open', 'closed'])
   }).safeParse(req.body);
   if (!parsed.success || new Date(parsed.data.starts_at) >= new Date(parsed.data.ends_at)) {
     return badRequest(res, 'Thông tin khảo sát hoặc thời gian khảo sát không hợp lệ.');
   }
-  if (new Set(parsed.data.question_ids).size !== parsed.data.question_ids.length) return badRequest(res, 'Không được chọn lặp câu hỏi.');
   try {
     const [assignment, questions] = await Promise.all([
       models.TeachingAssignment.exists({ _id: parsed.data.assignment_id }),
-      models.SurveyQuestion.find({ _id: { $in: parsed.data.question_ids }, is_active: true }).select('_id').lean()
+      models.SurveyQuestion.find({ is_active: true }).select('_id').sort({ createdAt: 1, _id: 1 }).lean()
     ]);
     if (!assignment) return badRequest(res, 'Phân công giảng dạy không tồn tại.');
-    if (questions.length !== parsed.data.question_ids.length) return badRequest(res, 'Một hoặc nhiều câu hỏi không tồn tại hoặc đã bị vô hiệu hóa.');
+    if (!questions.length) return badRequest(res, 'Cần có ít nhất một câu hỏi chung đang hoạt động trước khi tạo khảo sát.');
+    if (questions.length > 100) return badRequest(res, 'Không thể thêm quá 100 câu hỏi chung vào một khảo sát.');
     const period = await models.SurveyPeriod.create({
       assignment_id: parsed.data.assignment_id, title: parsed.data.title,
       description: parsed.data.description, starts_at: new Date(parsed.data.starts_at),
       ends_at: new Date(parsed.data.ends_at), status: parsed.data.status,
-      questions: parsed.data.question_ids.map((question_id, index) => ({ question_id, position: index + 1 }))
+      questions: questions.map(({ _id: question_id }, index) => ({ question_id, position: index + 1 }))
     });
     return res.status(201).json({ id: String(period._id), message: 'Đã tạo khảo sát.' });
   } catch (error) {
@@ -825,9 +964,24 @@ function resourceSchema(resource, body) {
     schema = z.object({ code: z.string().trim().min(1).max(30), name: nameSchema, academic_year: z.string().trim().min(1).max(20), semester: z.string().trim().max(30).optional().default('') });
   } else if (resource === 'questions') {
     schema = z.object({ text: z.string().trim().min(5).max(1000), category: nameSchema.max(100), is_active: z.coerce.boolean().default(true) });
+  } else if (resource === 'lecturer-questions') {
+    schema = z.object({
+      text: z.string().trim().min(5).max(1000),
+      category: nameSchema.max(100),
+      description: z.string().trim().max(500).optional().default(''),
+      is_required: z.coerce.boolean().default(false),
+      is_active: z.coerce.boolean().default(true)
+    });
   }
   if (!schema) return { success: false, error: 'Danh mục quản lý không tồn tại.' };
   return schema.safeParse(body);
+}
+
+async function lecturerQuestionHasOpenSurvey(question) {
+  const liveSurveyFilter = { assignment_id: question.assignment_id, status: 'open' };
+  if (question.survey_id) liveSurveyFilter._id = question.survey_id;
+  else liveSurveyFilter.starts_at = { $gte: question.createdAt };
+  return models.SurveyPeriod.exists(liveSurveyFilter);
 }
 
 module.exports = router;

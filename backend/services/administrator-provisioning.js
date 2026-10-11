@@ -78,7 +78,7 @@ async function resetAdministratorPassword(UserModel, environment, confirmed) {
   const passwordHash = await bcrypt.hash(password, 12);
   const result = await UserModel.updateOne(
     { _id: existing._id, role: 'admin' },
-    { $set: { password_hash: passwordHash } }
+    { $set: { password_hash: passwordHash }, $inc: { auth_version: 1 } }
   );
   if (result.matchedCount !== 1) {
     throw new Error('Tài khoản đã thay đổi trong khi reset; hãy kiểm tra dữ liệu rồi thử lại.');

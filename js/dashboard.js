@@ -2,6 +2,10 @@ document.addEventListener('DOMContentLoaded', async () => {
   try {
     const user = await App.currentUser();
     if (!user) return;
+    if (user.role === 'lecturer') {
+      window.location.replace('/main/lecturer.html');
+      return;
+    }
     document.getElementById('user-name').textContent = user.name;
     document.getElementById('user-greeting').textContent = `${user.name} · ${roleName(user.role)}`;
     document.getElementById('reports-link').classList.remove('d-none');
@@ -10,6 +14,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       document.getElementById('manage-button').classList.remove('d-none');
     }
     if (user.role === 'student') {
+      document.getElementById('student-profile-link').classList.remove('d-none');
       document.getElementById('overview-section').classList.add('d-none');
       document.getElementById('charts-section').classList.add('d-none');
       document.getElementById('student-section').classList.remove('d-none');
@@ -66,13 +71,13 @@ async function loadSurveys() {
     detail.textContent = `${survey.course_title} · ${survey.lecturer_name} · ${survey.class_name}`;
     const status = document.createElement('p');
     status.className = survey.submitted ? 'text-success small' : 'text-secondary small';
-    status.textContent = survey.submitted ? 'Bạn đã gửi phản hồi ẩn danh.' : `Hạn gửi: ${formatDate(survey.ends_at)}`;
+    status.textContent = `${survey.attemptsUsed} / ${survey.maxSubmissions} lượt đã gửi · còn ${survey.attemptsRemaining} lượt · hạn ${formatDate(survey.ends_at)}`;
     card.append(title, detail, status);
-    if (!survey.submitted) {
+    if (survey.attemptsRemaining > 0) {
       const link = document.createElement('a');
       link.className = 'btn btn-primary btn-sm';
       link.href = `/main/evaluate.html?id=${encodeURIComponent(survey.id)}`;
-      link.textContent = 'Đánh giá ngay';
+      link.textContent = survey.submitted ? 'Chỉnh sửa đánh giá' : 'Đánh giá ngay';
       card.append(link);
     }
     col.append(card);

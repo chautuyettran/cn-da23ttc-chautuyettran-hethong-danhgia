@@ -11,14 +11,18 @@ async function authenticate(req, res, next) {
   try {
     payload = jwt.verify(token, process.env.JWT_SECRET, { issuer: 'teaching-quality-evaluation' });
   } catch {
-    res.clearCookie('session', cookieOptions());
+    clearSessionCookie(res);
     return res.status(401).json({ error: 'Phiên đăng nhập không hợp lệ hoặc đã hết hạn.' });
   }
   try {
-    const user = await User.findOne({ _id: payload.id, is_active: true }).select('full_name email role lecturer_id').lean();
+    const user = await User.findOne({ _id: payload.id, is_active: true }).select('full_name email role lecturer_id auth_version').lean();
     if (!user) {
-      res.clearCookie('session', cookieOptions());
+      clearSessionCookie(res);
       return res.status(401).json({ error: 'Tài khoản không còn hoạt động.' });
+    }
+    if ((payload.authVersion || 0) !== (user.auth_version || 0)) {
+      clearSessionCookie(res);
+      return res.status(401).json({ error: 'Phiên đăng nhập đã bị thu hồi. Vui lòng đăng nhập lại.' });
     }
     req.user = {
       id: String(user._id), name: user.full_name, email: user.email,
@@ -49,4 +53,10 @@ function cookieOptions() {
   };
 }
 
-module.exports = { authenticate, requireRole, cookieOptions };
+function clearSessionCookie(res) {
+  const options = cookieOptions();
+  delete options.maxAge;
+  res.clearCookie('session', options);
+}
+
+module.exports = { authenticate, requireRole, cookieOptions, clearSessionCookie };

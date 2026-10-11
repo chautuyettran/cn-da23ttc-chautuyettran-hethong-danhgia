@@ -20,11 +20,20 @@ const fieldSets = {
     { key: 'category', label: 'Nhóm câu hỏi', required: true },
     { key: 'is_active', label: 'Đang sử dụng', type: 'checkbox' }
   ],
+  'lecturer-questions': [
+    { key: 'text', label: 'Nội dung câu hỏi', type: 'textarea', required: true },
+    { key: 'category', label: 'Nhóm câu hỏi', required: true },
+    { key: 'description', label: 'Mô tả', type: 'textarea' },
+    { key: 'is_required', label: 'Bắt buộc trả lời', type: 'checkbox' },
+    { key: 'is_active', label: 'Đang áp dụng', type: 'checkbox' }
+  ],
   users: [
     { key: 'full_name', label: 'Họ và tên', required: true },
     { key: 'email', label: 'Email', type: 'email', required: true },
     { key: 'password', label: 'Mật khẩu (ít nhất 12 ký tự)', type: 'password', required: true, minLength: 12 },
-    { key: 'role', label: 'Vai trò', type: 'select', options: [['student', 'Sinh viên'], ['lecturer', 'Giảng viên'], ['admin', 'Quản trị viên']] }
+    { key: 'role', label: 'Vai trò', type: 'select', options: [['student', 'Sinh viên'], ['lecturer', 'Giảng viên'], ['admin', 'Quản trị viên']] },
+    { key: 'phone_number', label: 'Số điện thoại khôi phục (định dạng +84...)', type: 'tel', maxLength: 16, pattern: '^\\+[1-9][0-9]{7,14}$' },
+    { key: 'phone_verified', label: 'Đã xác minh số điện thoại theo quy trình của đơn vị', type: 'checkbox', defaultValue: false, helpText: 'Chỉ đánh dấu sau khi đơn vị đã xác minh số điện thoại với sinh viên qua quy trình được phê duyệt.' }
   ],
   policy: [
     { key: 'scope', label: 'Phạm vi giới hạn', type: 'select', options: [['survey', 'Theo từng khảo sát'], ['assignment_period', 'Theo phân công và học kỳ']] },
@@ -64,7 +73,7 @@ function renderForm(values = {}) {
   form.replaceChildren();
   const resource = resourceSelect.value;
   heading.textContent = editingId ? 'Cập nhật dữ liệu' : 'Thêm dữ liệu';
-  if (fieldSets[resource]) {
+  if (fieldSets[resource] && (resource !== 'lecturer-questions' || editingId)) {
     fieldSets[resource].forEach((field) => form.append(makeField(field, values[field.key])));
     if (resource === 'policy' && !Object.keys(values).length) {
       const generation = formGeneration;
@@ -89,6 +98,11 @@ function renderForm(values = {}) {
         false
       );
     }
+  } else if (resource === 'lecturer-questions') {
+    const note = document.createElement('p');
+    note.className = 'small text-secondary mb-0';
+    note.textContent = 'Chọn Sửa ở câu hỏi hiện có để cập nhật. Câu hỏi giảng viên chỉ được tạo từ cổng giảng viên.';
+    form.append(note);
   } else if (resource === 'assignments') {
     addSelectField('lecturer_id', 'Giảng viên', '/api/admin/lecturers');
     addSelectField('course_id', 'Học phần', '/api/admin/courses');
@@ -103,7 +117,10 @@ function renderForm(values = {}) {
     form.append(makeField({ key: 'ends_at', label: 'Kết thúc', type: 'datetime-local', required: true }));
     const status = makeField({ key: 'status', label: 'Trạng thái', type: 'select', options: [['draft', 'Bản nháp'], ['open', 'Đang mở'], ['closed', 'Đã đóng']] });
     form.append(status);
-    addSelectField('question_ids', 'Câu hỏi (có thể chọn nhiều)', '/api/admin/questions', undefined, true);
+    const note = document.createElement('p');
+    note.className = 'small text-secondary mb-0';
+    note.textContent = 'Tất cả câu hỏi chung đang hoạt động sẽ tự động hiển thị trong mọi khảo sát.';
+    form.append(note);
   } else if (resource === 'enrollments') {
     addSelectField('student_id', 'Sinh viên', '/api/admin/students', (item) => `${item.full_name} · ${item.email}`);
     addSelectField('class_id', 'Lớp học', '/api/admin/classes');
@@ -111,8 +128,10 @@ function renderForm(values = {}) {
   const submit = document.createElement('button');
   submit.type = 'submit';
   submit.className = 'btn btn-primary';
-  submit.textContent = editingId ? 'Lưu thay đổi' : 'Thêm mới';
-  submit.disabled = pendingSelectLoads > 0;
+  submit.textContent = resource === 'lecturer-questions' && !editingId
+    ? 'Chọn câu hỏi để sửa'
+    : editingId ? 'Lưu thay đổi' : 'Thêm mới';
+  submit.disabled = pendingSelectLoads > 0 || (resource === 'lecturer-questions' && !editingId);
   form.append(submit);
   if (editingId) {
     const cancel = document.createElement('button');
@@ -121,6 +140,22 @@ function renderForm(values = {}) {
     cancel.textContent = 'Hủy chỉnh sửa';
     cancel.addEventListener('click', () => { editingId = null; renderForm(); });
     form.append(cancel);
+  }
+  if (resource === 'users') {
+    const role = form.elements.namedItem('role');
+    const phoneFields = ['phone_number', 'phone_verified']
+      .map((key) => form.elements.namedItem(key)?.closest('.admin-field'))
+      .filter(Boolean);
+    const updatePhoneVisibility = () => {
+      const isStudent = role.value === 'student';
+      phoneFields.forEach((field) => field.classList.toggle('d-none', !isStudent));
+      if (!isStudent) {
+        form.elements.namedItem('phone_number').value = '';
+        form.elements.namedItem('phone_verified').checked = false;
+      }
+    };
+    role.addEventListener('change', updatePhoneVisibility);
+    updatePhoneVisibility();
   }
 }
 
@@ -155,6 +190,8 @@ function makeField(field, value) {
     if (field.min !== undefined) input.min = field.min;
     if (field.max !== undefined) input.max = field.max;
     if (field.key === 'password' && editingId) input.required = false;
+    if (field.pattern) input.pattern = field.pattern;
+    if (field.maxLength) input.maxLength = field.maxLength;
     input.value = value ?? '';
   } else if (field.type === 'textarea') {
     input.required = Boolean(field.required);
@@ -163,6 +200,12 @@ function makeField(field, value) {
   } else input.value = value ?? field.options?.[0]?.[0] ?? '';
   if (field.type === 'checkbox') wrap.append(label, input);
   else wrap.append(label, input);
+  if (field.helpText) {
+    const help = document.createElement('small');
+    help.className = 'form-text text-secondary';
+    help.textContent = field.helpText;
+    wrap.append(help);
+  }
   return wrap;
 }
 
@@ -224,7 +267,7 @@ async function save(event) {
   new FormData(form).forEach((value, key) => { body[key] = value; });
   form.querySelectorAll('input[type="checkbox"]').forEach((checkbox) => { body[checkbox.name] = checkbox.checked; });
   form.querySelectorAll('select[multiple]').forEach((select) => {
-    body[select.name] = [...select.selectedOptions].map((option) => Number(option.value));
+    body[select.name] = [...select.selectedOptions].map((option) => option.value);
   });
   let endpoint = `/api/admin/${resource}`;
   let method = editingId ? 'PUT' : 'POST';
@@ -269,12 +312,13 @@ async function loadList() {
     const response = await App.api(endpoint);
     const items = resource === 'policy' ? [response.policy] : response.items;
     const columns = resource === 'policy' ? ['scope', 'max_submissions', 'allow_revisions', 'min_report_responses'] :
-      resource === 'users' ? ['id', 'full_name', 'email', 'role', 'is_active'] :
+      resource === 'users' ? ['id', 'full_name', 'email', 'role', 'phone_number', 'phone_verified', 'is_active'] :
       resource === 'assignments' ? ['id', 'lecturer_name', 'course_title', 'class_name', 'academic_year', 'semester'] :
       resource === 'surveys' ? ['id', 'title', 'course_title', 'class_name', 'status', 'ends_at'] :
       resource === 'enrollments' ? ['full_name', 'email', 'class_name'] :
+      resource === 'lecturer-questions' ? ['id', 'lecturer_name', 'course_title', 'class_name', 'text', 'category', 'is_required', 'is_active'] :
       ['id', ...(fieldSets[resource] || []).map((field) => field.key)];
-    const labels = { id: 'ID', full_name: 'Họ và tên', department: 'Khoa / bộ môn', email: 'Email', code: 'Mã', title: 'Tên', description: 'Mô tả', name: 'Tên lớp', academic_year: 'Năm học', semester: 'Học kỳ', text: 'Nội dung câu hỏi', category: 'Nhóm', is_active: 'Hoạt động', role: 'Vai trò', lecturer_id: 'ID giảng viên', lecturer_name: 'Giảng viên', course_title: 'Học phần', class_name: 'Lớp', status: 'Trạng thái', ends_at: 'Hạn kết thúc', class_id: 'ID lớp', scope: 'Phạm vi', max_submissions: 'Số lần gửi tối đa', allow_revisions: 'Cho phép chỉnh sửa', min_report_responses: 'Ngưỡng báo cáo' };
+    const labels = { id: 'ID', full_name: 'Họ và tên', department: 'Khoa / bộ môn', email: 'Email', code: 'Mã', title: 'Tên', description: 'Mô tả', name: 'Tên lớp', academic_year: 'Năm học', semester: 'Học kỳ', text: 'Nội dung câu hỏi', category: 'Nhóm', is_active: 'Hoạt động', is_required: 'Bắt buộc', role: 'Vai trò', lecturer_id: 'ID giảng viên', lecturer_name: 'Giảng viên', course_title: 'Học phần', class_name: 'Lớp', status: 'Trạng thái', ends_at: 'Hạn kết thúc', class_id: 'ID lớp', scope: 'Phạm vi', max_submissions: 'Số lần gửi tối đa', allow_revisions: 'Cho phép chỉnh sửa', min_report_responses: 'Ngưỡng báo cáo', phone_number: 'Điện thoại khôi phục', phone_verified: 'Đã xác minh điện thoại' };
     const header = document.createElement('tr');
     [...columns.map((key) => labels[key] || key), 'Thao tác'].forEach((text) => {
       const th = document.createElement('th');
@@ -288,7 +332,9 @@ async function loadList() {
         const cell = document.createElement('td');
         let value = item[key];
         if (key === 'is_active') value = item.is_active ? 'Đang hoạt động' : 'Đã khóa';
+        if (key === 'phone_verified') value = item.phone_verified ? 'Đã xác minh' : 'Chưa xác minh';
         if (key === 'allow_revisions') value = item.allow_revisions ? 'Có' : 'Không';
+        if (key === 'is_required') value = item.is_required ? 'Có' : 'Không';
         if (key === 'scope') value = item.scope === 'survey' ? 'Theo từng khảo sát' : 'Theo phân công và học kỳ';
         if (key === 'role') value = ({ admin: 'Quản trị viên', lecturer: 'Giảng viên', student: 'Sinh viên' })[value] || value;
         cell.textContent = value ?? '—';
@@ -302,8 +348,9 @@ async function loadList() {
           heading.scrollIntoView({ behavior: 'smooth', block: 'center' });
         });
         const toggle = makeActionButton(item.is_active ? 'Khóa' : 'Mở', item.is_active ? 'btn-outline-danger' : 'btn-outline-success', async () => {
-          await App.api(`/api/admin/users/${item.id}/status`, { method: 'PUT', body: JSON.stringify({ is_active: !item.is_active }) });
+          const result = await App.api(`/api/admin/users/${item.id}/status`, { method: 'PUT', body: JSON.stringify({ is_active: !item.is_active }) });
           await loadList();
+          return result;
         });
         actions.append(edit, document.createTextNode(' '), toggle);
       } else if (fieldSets[resource]) {
@@ -314,28 +361,31 @@ async function loadList() {
         });
         const remove = makeActionButton('Xóa', 'btn-outline-danger', async () => {
           if (!window.confirm('Bạn có chắc muốn xóa dữ liệu này?')) return;
-          await App.api(`/api/admin/${resource}/${item.id}`, { method: 'DELETE' });
+          const result = await App.api(`/api/admin/${resource}/${item.id}`, { method: 'DELETE' });
           await loadList();
-          App.showAlert('Đã xóa dữ liệu.', 'success');
+          return result;
         });
         actions.append(edit, document.createTextNode(' '), remove);
       } else if (resource === 'assignments') {
         actions.append(makeActionButton('Xóa', 'btn-outline-danger', async () => {
           if (!window.confirm('Xóa phân công giảng dạy này?')) return;
-          await App.api(`/api/admin/assignments/${item.id}`, { method: 'DELETE' });
+          const result = await App.api(`/api/admin/assignments/${item.id}`, { method: 'DELETE' });
           await loadList();
+          return result;
         }));
       } else if (resource === 'surveys') {
         actions.append(makeActionButton(item.status === 'open' ? 'Đóng' : 'Mở', item.status === 'open' ? 'btn-outline-danger' : 'btn-outline-success', async () => {
           const status = item.status === 'open' ? 'closed' : 'open';
-          await App.api(`/api/admin/surveys/${item.id}/status`, { method: 'PUT', body: JSON.stringify({ status }) });
+          const result = await App.api(`/api/admin/surveys/${item.id}/status`, { method: 'PUT', body: JSON.stringify({ status }) });
           await loadList();
+          return result;
         }));
       } else if (resource === 'enrollments') {
         actions.append(makeActionButton('Gỡ khỏi lớp', 'btn-outline-danger', async () => {
           if (!window.confirm('Gỡ sinh viên này khỏi lớp?')) return;
-          await App.api(`/api/admin/enrollments/${item.class_id}/${item.student_id}`, { method: 'DELETE' });
+          const result = await App.api(`/api/admin/enrollments/${item.class_id}/${item.student_id}`, { method: 'DELETE' });
           await loadList();
+          return result;
         }));
       }
       row.append(actions);
@@ -365,7 +415,8 @@ function makeActionButton(text, style, action) {
   button.addEventListener('click', async () => {
     button.disabled = true;
     try {
-      await action();
+      const result = await action();
+      if (result?.message) App.showAlert(result.message, 'success');
     } catch (error) {
       App.showAlert(error.message);
       button.disabled = false;

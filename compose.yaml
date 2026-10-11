@@ -2,6 +2,8 @@ services:
   mongo:
     image: mongo:8.0
     restart: unless-stopped
+    ports:
+        - "127.0.0.1:27018:27017"
     command:
       - sh
       - -c
@@ -21,10 +23,15 @@ services:
         - CMD-SHELL
         - >-
           mongosh --quiet --host localhost
+          --username "$$MONGO_APP_USERNAME"
+          --password "$$MONGO_APP_PASSWORD"
+          --authenticationDatabase teaching_quality
+          --eval "const hello = db.adminCommand({hello:1}); if (hello.setName === 'rs0' && hello.isWritablePrimary) quit(0); quit(1);"
+          || mongosh --quiet --host localhost
           --username "$$MONGO_INITDB_ROOT_USERNAME"
           --password "$$MONGO_INITDB_ROOT_PASSWORD"
           --authenticationDatabase admin
-          --eval "try { if (rs.status().myState !== 1) quit(1); } catch (error) { rs.initiate({_id:'rs0',members:[{_id:0,host:'mongo:27017'}]}); quit(1); }"
+          --eval "try { rs.status(); } catch (error) { if (error.code !== 94) throw error; rs.initiate({_id:'rs0',members:[{_id:0,host:'mongo:27017'}]}); } quit(1);"
       interval: 5s
       timeout: 10s
       retries: 30
@@ -45,6 +52,16 @@ services:
       COOKIE_SECURE: ${COOKIE_SECURE:-false}
       MIN_REPORT_RESPONSES: ${MIN_REPORT_RESPONSES:-5}
       SEED_STUDENT_EMAIL: ${SEED_STUDENT_EMAIL:-}
+      SMS_PROVIDER: ${SMS_PROVIDER:-}
+      TWILIO_ACCOUNT_SID: ${TWILIO_ACCOUNT_SID:-}
+      TWILIO_AUTH_TOKEN: ${TWILIO_AUTH_TOKEN:-}
+      TWILIO_FROM_NUMBER: ${TWILIO_FROM_NUMBER:-}
+      AVATAR_STORAGE_DIR: /app/uploads/avatars
+      TEST_LECTURER_PASSWORD: ${TEST_LECTURER_PASSWORD:-}
+      TEST_LECTURER_NAME: ${TEST_LECTURER_NAME:-}
+      TEST_LECTURER_DEPARTMENT: ${TEST_LECTURER_DEPARTMENT:-}
+    volumes:
+      - student_avatar_data:/app/uploads/avatars
     ports:
       - "${PORT:-3000}:3000"
     depends_on:
@@ -83,8 +100,70 @@ services:
     networks:
       - app_network
 
+  lecturer-provision:
+    profiles:
+      - tools
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: "no"
+    environment:
+      NODE_ENV: production
+      MONGODB_URI: "mongodb://${MONGO_APP_USERNAME}:${MONGO_APP_PASSWORD}@mongo:27017/teaching_quality?authSource=teaching_quality&replicaSet=rs0"
+      LECTURER_NAME: ${LECTURER_NAME:-}
+      LECTURER_EMAIL: ${LECTURER_EMAIL:-}
+      LECTURER_PASSWORD: ${LECTURER_PASSWORD:-}
+      LECTURER_DEPARTMENT: ${LECTURER_DEPARTMENT:-}
+    command: ["npm", "run", "provision-lecturer"]
+    depends_on:
+      mongo:
+        condition: service_healthy
+    networks:
+      - app_network
+
+  test-lecturer-provision:
+    profiles:
+      - tools
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: "no"
+    environment:
+      NODE_ENV: production
+      MONGODB_URI: "mongodb://${MONGO_APP_USERNAME}:${MONGO_APP_PASSWORD}@mongo:27017/teaching_quality?authSource=teaching_quality&replicaSet=rs0"
+      TEST_LECTURER_PASSWORD: ${TEST_LECTURER_PASSWORD:-}
+      TEST_LECTURER_NAME: ${TEST_LECTURER_NAME:-}
+      TEST_LECTURER_DEPARTMENT: ${TEST_LECTURER_DEPARTMENT:-}
+    command: ["npm", "run", "provision-test-lecturer"]
+    depends_on:
+      mongo:
+        condition: service_healthy
+    networks:
+      - app_network
+
+  test-lecturer-password-reset:
+    profiles:
+      - tools
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: "no"
+    environment:
+      NODE_ENV: production
+      MONGODB_URI: "mongodb://${MONGO_APP_USERNAME}:${MONGO_APP_PASSWORD}@mongo:27017/teaching_quality?authSource=teaching_quality&replicaSet=rs0"
+      TEST_LECTURER_PASSWORD: ${TEST_LECTURER_PASSWORD:-}
+      TEST_LECTURER_NAME: ${TEST_LECTURER_NAME:-}
+      TEST_LECTURER_DEPARTMENT: ${TEST_LECTURER_DEPARTMENT:-}
+    command: ["npm", "run", "reset-test-lecturer-password", "--", "--confirm"]
+    depends_on:
+      mongo:
+        condition: service_healthy
+    networks:
+      - app_network
+
 volumes:
   mongo_data:
+  student_avatar_data:
 
 networks:
   app_network:
