@@ -79,56 +79,78 @@
               <input id="edit-name" class="form-control" type="text" required maxlength="150" autocomplete="name">
             </div>
             <div id="edit-class-row" class="mb-3">
-              <label class="form-label" for="edit-class">Lớp (chỉ đọc)</label>
+              <label class="form-label" for="edit-class">Lớp</label>
               <input id="edit-class" class="form-control" type="text" readonly>
             </div>
             <div id="edit-student-id-row" class="mb-3">
-              <label class="form-label" for="edit-student-id">Mã số sinh viên (MSSV, chỉ đọc)</label>
+              <label class="form-label" for="edit-student-id">Mã số sinh viên</label>
               <input id="edit-student-id" class="form-control" type="text" readonly>
             </div>
             <div id="edit-department-row" class="mb-3 d-none">
-              <label class="form-label" for="edit-department">Khoa (chỉ đọc)</label>
+              <label class="form-label" for="edit-department">
+                Khoa
+              </label>
               <input id="edit-department" class="form-control" type="text" readonly>
             </div>
             <div class="mb-3">
-              <label class="form-label" for="edit-email">Email (chỉ đọc)</label>
+              <label class="form-label" for="edit-email">
+                Email</label>
               <input id="edit-email" class="form-control" type="email" readonly>
             </div>
             <div class="mb-3">
-              <label class="form-label" for="edit-phone">Số điện thoại</label>
+              <label class="form-label" for="edit-phone">
+                Số điện thoại
+              </label>
               <input id="edit-phone" class="form-control" type="tel" maxlength="16" pattern="\+[1-9][0-9]{7,14}" placeholder="+84901234567" autocomplete="tel">
-              <div class="form-text">Để trống nếu chưa muốn cập nhật; nếu nhập, dùng định dạng quốc tế E.164.</div>
+              <div class="form-text">
+                Để trống nếu chưa muốn cập nhật.
+              </div>
             </div>
             <div class="mb-3">
-              <label class="form-label" for="edit-github">Link GitHub (không bắt buộc)</label>
+              <label class="form-label" for="edit-github">
+                Link GitHub (không bắt buộc)
+              </label>
               <input id="edit-github" class="form-control" type="url" maxlength="255" placeholder="https://github.com/ten-cua-ban" autocomplete="url">
             </div>
             <div class="d-flex gap-2">
-              <button id="save-profile" class="btn btn-primary" type="submit">Lưu thay đổi</button>
-              <button id="cancel-profile" class="btn btn-outline-secondary" type="button">Hủy</button>
+              <button id="save-profile" class="btn btn-primary" type="submit">
+                Lưu thay đổi</button>
+              <button id="cancel-profile" class="btn btn-outline-secondary" type="button">
+                Hủy
+              </button>
             </div>
           </form>
         </article>
       </div>
       <div class="col-12">
         <article class="panel">
-          <h2 class="h5">Đổi mật khẩu</h2>
-          <p class="small text-secondary">Mật khẩu mới cần tối thiểu 12 ký tự. Sau khi đổi, bạn cần đăng nhập lại.</p>
+          <h2 class="h5">
+            Đổi mật khẩu
+          </h2>
+          <p class="small text-secondary">
+            Mật khẩu mới cần tối thiểu 12 ký tự. Sau khi đổi, bạn cần đăng nhập lại.
+          </p>
           <form id="password-form" class="row g-3" novalidate>
             <div class="col-12 col-md-4">
               <label class="form-label" for="current-password">Mật khẩu hiện tại</label>
               <input id="current-password" class="form-control" type="password" required maxlength="200" autocomplete="current-password">
             </div>
             <div class="col-12 col-md-4">
-              <label class="form-label" for="new-password">Mật khẩu mới</label>
+              <label class="form-label" for="new-password">
+                Mật khẩu mới
+              </label>
               <input id="new-password" class="form-control" type="password" required minlength="12" maxlength="200" autocomplete="new-password">
             </div>
             <div class="col-12 col-md-4">
-              <label class="form-label" for="confirm-password">Nhập lại mật khẩu mới</label>
+              <label class="form-label" for="confirm-password">
+                Nhập lại mật khẩu mới
+              </label>
               <input id="confirm-password" class="form-control" type="password" required minlength="12" maxlength="200" autocomplete="new-password">
             </div>
             <div class="col-12">
-              <button id="change-password" class="btn btn-outline-primary" type="submit">Đổi mật khẩu</button>
+              <button id="change-password" class="btn btn-outline-primary" type="submit">
+                Đổi mật khẩu
+              </button>
             </div>
           </form>
         </article>
