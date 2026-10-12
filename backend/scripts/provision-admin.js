@@ -1,6 +1,7 @@
 require('dotenv').config();
 
-const { connectDatabase, mongoose } = require('../config/db');
+const { connectDatabase, closePool } = require('../config/mysql');
+const { migrate } = require('./migrate-mysql');
 const { User } = require('../models');
 const {
   readAdministratorConfiguration, provisionAdministrator
@@ -8,6 +9,7 @@ const {
 
 async function main() {
   readAdministratorConfiguration(process.env);
+  await migrate();
   await connectDatabase();
   await User.createIndexes();
   const { user, created } = await provisionAdministrator(User, process.env);
@@ -23,4 +25,4 @@ main()
     console.error('Không thể provisioning tài khoản quản trị:', error.message);
     process.exitCode = 1;
   })
-  .finally(() => mongoose.disconnect());
+  .finally(() => closePool());

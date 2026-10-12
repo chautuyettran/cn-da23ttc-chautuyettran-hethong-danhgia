@@ -5,14 +5,18 @@ const path = require('path');
 
 require('dotenv').config();
 
-test('MongoDB-backed student profiles enforce ownership and persist validated avatar uploads', {
-  skip: process.env.MONGODB_INTEGRATION_TESTS !== 'true'
-    ? 'Set MONGODB_INTEGRATION_TESTS=true to run against the configured MongoDB database.'
+test('MySQL-backed student profiles enforce ownership and persist validated avatar uploads', {
+  skip: process.env.MYSQL_INTEGRATION_TESTS !== 'true'
+    ? 'Set MYSQL_INTEGRATION_TESTS=true and use a dedicated *_test database.'
     : false
 }, async () => {
+  if (!/_test$/i.test(process.env.MYSQL_DATABASE || '')) {
+    throw new Error('Integration tests refuse to run unless MYSQL_DATABASE ends in _test.');
+  }
   const bcrypt = require('bcryptjs');
   const sharp = require('sharp');
-  const { connectDatabase, mongoose } = require('../backend/config/db');
+  const { connectDatabase, closePool } = require('../backend/config/mysql');
+  const { migrate } = require('../backend/scripts/migrate-mysql');
   const models = require('../backend/models');
   const { app } = require('../backend/app');
   const createdUsers = [];
@@ -67,10 +71,11 @@ test('MongoDB-backed student profiles enforce ownership and persist validated av
       await models.User.deleteMany({ _id: { $in: createdUsers } });
     }
     await stopServer();
-    await mongoose.disconnect();
+    await closePool();
   }
 
   try {
+    await migrate();
     await connectDatabase();
     const marker = `${Date.now()}${Math.floor(Math.random() * 1000000)}`;
     const password = `Profile-${marker}-Integration`;

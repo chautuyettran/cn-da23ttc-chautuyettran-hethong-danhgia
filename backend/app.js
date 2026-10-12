@@ -4,8 +4,8 @@ const path = require('path');
 const express = require('express');
 const helmet = require('helmet');
 const cookieParser = require('cookie-parser');
-const mongoose = require('mongoose');
-const { connectDatabase } = require('./config/db');
+const { connectDatabase, closePool, getPool } = require('./config/mysql');
+const { migrate } = require('./scripts/migrate-mysql');
 const models = require('./models');
 const authRoutes = require('./routes/auth');
 const recoveryRoutes = require('./routes/recovery');
@@ -14,7 +14,7 @@ const lecturerRoutes = require('./routes/lecturer');
 const lecturerProfileRoutes = studentProfileRoutes.createProfileRouter('lecturer');
 const apiRoutes = require('./routes/api');
 
-const required = ['MONGODB_URI', 'JWT_SECRET'];
+const required = ['MYSQL_HOST', 'MYSQL_DATABASE', 'MYSQL_USER', 'MYSQL_PASSWORD', 'JWT_SECRET'];
 const missing = required.filter((name) => !process.env[name]);
 if (missing.length) throw new Error(`Missing required environment variables: ${missing.join(', ')}`);
 if (process.env.JWT_SECRET.length < 32) throw new Error('JWT_SECRET must contain at least 32 characters.');
@@ -46,8 +46,9 @@ for (const directory of ['assets', 'css', 'js', 'main']) {
 }
 
 app.get('/api/health', (req, res) => {
-  const ready = mongoose.connection.readyState === 1;
-  return res.status(ready ? 200 : 503).json({ status: ready ? 'ok' : 'unavailable', database: ready ? 'connected' : 'disconnected' });
+  getPool().query('SELECT 1')
+    .then(() => res.status(200).json({ status: 'ok', database: 'connected' }))
+    .catch(() => res.status(503).json({ status: 'unavailable', database: 'disconnected' }));
 });
 app.use('/api/auth', authRoutes);
 app.use('/api/auth/recovery', recoveryRoutes);
@@ -73,7 +74,10 @@ app.use((error, req, res, next) => {
 
 async function start() {
   await connectDatabase();
-  await Promise.all(Object.values(models).map((model) => model.createIndexes()));
+  await migrate();
+  await Promise.all(Object.values(models)
+    .filter((model) => typeof model.createIndexes === 'function')
+    .map((model) => model.createIndexes()));
   await models.EvaluationPolicy.updateOne(
     { key: 'global' },
     { $setOnInsert: {
@@ -86,7 +90,7 @@ async function start() {
   const server = app.listen(port, () => console.log(`Ứng dụng đang chạy tại http://localhost:${port}`));
   const shutdown = async () => {
     server.close(async () => {
-      await mongoose.disconnect();
+      await closePool();
       process.exit(0);
     });
   };

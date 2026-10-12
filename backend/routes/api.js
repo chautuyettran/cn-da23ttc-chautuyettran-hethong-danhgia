@@ -1,7 +1,6 @@
 const express = require('express');
 const bcrypt = require('bcryptjs');
 const { z } = require('zod');
-const mongoose = require('mongoose');
 const models = require('../models');
 const { authenticate, requireRole } = require('../middleware/auth');
 const {
@@ -32,7 +31,7 @@ function badRequest(res, error) {
 
 function asId(value) {
   return objectIdSchema.safeParse(String(value || '')).success
-    ? new mongoose.Types.ObjectId(String(value))
+    ? String(value)
     : null;
 }
 
@@ -73,17 +72,15 @@ router.get('/overview', requireRole('admin', 'lecturer'), async (req, res, next)
       models.Evaluation.countDocuments(scope)
     ]);
     const match = req.user.role === 'lecturer' ? { lecturer_id: asId(req.user.lecturerId) } : {};
-    const [score] = await models.Evaluation.aggregate([
-      { $match: match },
-      { $unwind: '$answers' },
-      { $group: { _id: null, average: { $avg: '$answers.score' } } }
-    ]);
+    const averageScore = await models.averageEvaluationScore(match);
     const policy = await getEvaluationPolicy();
     const threshold = policy.min_report_responses;
     return res.json({
       courses, classes, lecturers, activeSurveys,
       responses: req.user.role === 'lecturer' && responseCount < threshold ? null : responseCount,
-      averageScore: responseCount < threshold ? null : Number((score?.average || 0).toFixed(2))
+      averageScore: responseCount < threshold || averageScore === null
+        ? null
+        : Number(averageScore.toFixed(2))
     });
   } catch (error) {
     return next(error);
@@ -247,7 +244,7 @@ router.post('/surveys/:id/submit', requireRole('student'), async (req, res, next
   let session;
   let submissionStatus;
   try {
-    session = await mongoose.startSession();
+    session = await models.Evaluation.db.startSession();
     await session.withTransaction(async () => {
       const period = await models.SurveyPeriod.findOne({
         _id: surveyId, status: 'open', starts_at: { $lte: new Date() }, ends_at: { $gte: new Date() }
@@ -488,55 +485,33 @@ async function buildReports(query, user) {
     match.assignment_id = { $in: assignments };
   }
   const policy = await getEvaluationPolicy();
-  const grouped = await models.Evaluation.aggregate([
-    { $match: match },
-    { $unwind: '$answers' },
-    {
-      $group: {
-        _id: { survey: '$survey_id', question: '$answers.question_id', text: '$answers.text', category: '$answers.category' },
-        answerCount: { $sum: 1 },
-        scoreTotal: { $sum: '$answers.score' },
-        score1: { $sum: { $cond: [{ $eq: ['$answers.score', 1] }, 1, 0] } },
-        score2: { $sum: { $cond: [{ $eq: ['$answers.score', 2] }, 1, 0] } },
-        score3: { $sum: { $cond: [{ $eq: ['$answers.score', 3] }, 1, 0] } },
-        score4: { $sum: { $cond: [{ $eq: ['$answers.score', 4] }, 1, 0] } },
-        score5: { $sum: { $cond: [{ $eq: ['$answers.score', 5] }, 1, 0] } }
-      }
-    },
-    {
-      $group: {
-        _id: '$_id.survey', responses: { $max: '$answerCount' },
-        questions: { $push: {
-          id: '$_id.question', text: '$_id.text', category: '$_id.category',
-          average: { $divide: ['$scoreTotal', '$answerCount'] },
-          distribution: ['$score1', '$score2', '$score3', '$score4', '$score5']
-        } }
-      }
-    },
-    { $lookup: { from: 'survey_periods', localField: '_id', foreignField: '_id', as: 'period' } },
-    { $unwind: '$period' },
-    { $lookup: { from: 'teaching_assignments', localField: 'period.assignment_id', foreignField: '_id', as: 'assignment' } },
-    { $unwind: '$assignment' },
-    { $lookup: { from: 'lecturers', localField: 'assignment.lecturer_id', foreignField: '_id', as: 'lecturer' } },
-    { $unwind: '$lecturer' },
-    { $lookup: { from: 'courses', localField: 'assignment.course_id', foreignField: '_id', as: 'course' } },
-    { $unwind: '$course' },
-    { $lookup: { from: 'classes', localField: 'assignment.class_id', foreignField: '_id', as: 'class' } },
-    { $unwind: '$class' },
-    { $sort: { 'period.createdAt': -1 } }
-  ]);
-  const reports = grouped.map((item) => {
-    const suppressed = item.responses < policy.min_report_responses;
+  const rows = await models.evaluationReportRows(match);
+  const grouped = new Map();
+  for (const row of rows) {
+    let report = grouped.get(row.survey_id);
+    if (!report) {
+      report = {
+        id: String(row.survey_id), title: row.survey_title, date: row.survey_created_at,
+        course: row.course_title, courseCode: row.course_code, class: row.class_name,
+        academicYear: row.academic_year, semester: row.semester,
+        lecturer: row.lecturer_name, department: row.department,
+        responses: Number(row.responses), questions: []
+      };
+      grouped.set(row.survey_id, report);
+    }
+    report.questions.push({
+      id: String(row.question_id), text: row.question_text, category: row.category,
+      average: Number(Number(row.average).toFixed(2)),
+      distribution: [row.score_1, row.score_2, row.score_3, row.score_4, row.score_5].map(Number)
+    });
+  }
+  const reports = [...grouped.values()].map((report) => {
+    const suppressed = report.responses < policy.min_report_responses;
     return {
-      id: String(item.period._id), title: item.period.title, date: item.period.createdAt,
-      course: item.course.title, courseCode: item.course.code, class: item.class.name,
-      academicYear: item.assignment.academic_year, semester: item.assignment.semester,
-      lecturer: item.lecturer.full_name, department: item.lecturer.department,
-      responses: suppressed ? null : item.responses, suppressed,
-      questions: suppressed ? [] : item.questions.map((question) => ({
-        id: String(question.id), text: question.text, category: question.category,
-        average: Number(question.average.toFixed(2)), distribution: question.distribution
-      }))
+      ...report,
+      responses: suppressed ? null : report.responses,
+      suppressed,
+      questions: suppressed ? [] : report.questions
     };
   });
   return { reports, minimumResponses: policy.min_report_responses };

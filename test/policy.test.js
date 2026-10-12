@@ -32,7 +32,7 @@ test('evaluation policies reject invalid submission and revision settings', () =
   }).success, false);
 });
 
-test('Mongoose user validation enforces institutional email domains', async () => {
+test('User model validation enforces institutional email domains', async () => {
   const student = new models.User({
     full_name: 'Sinh viên kiểm thử', email: 'STUDENT@ST.TVU.EDU.VN',
     password_hash: 'hashed', role: 'student'

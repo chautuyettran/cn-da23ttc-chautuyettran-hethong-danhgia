@@ -1,6 +1,7 @@
 require('dotenv').config();
 
-const { connectDatabase, mongoose } = require('../config/db');
+const { connectDatabase, closePool } = require('../config/mysql');
+const { migrate } = require('./migrate-mysql');
 const { User } = require('../models');
 const { normalizeEmail, studentIdFromEmail } = require('../validators/account');
 const { provisionStudentAccount } = require('../services/student-provisioning');
@@ -10,6 +11,7 @@ async function main() {
   if (!studentIdFromEmail(email)) {
     throw new Error('Cách dùng: npm run provision-student -- <MSSV>@st.tvu.edu.vn (MSSV gồm 6–12 chữ số).');
   }
+  await migrate();
   await connectDatabase();
   await User.createIndexes();
   const { user, created } = await provisionStudentAccount(User, email);
@@ -25,4 +27,4 @@ main()
     console.error('Không thể provisioning tài khoản sinh viên:', error.message);
     process.exitCode = 1;
   })
-  .finally(() => mongoose.disconnect());
+  .finally(() => closePool());

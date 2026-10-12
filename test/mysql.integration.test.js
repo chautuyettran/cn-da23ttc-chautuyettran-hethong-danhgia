@@ -3,13 +3,17 @@ const assert = require('node:assert/strict');
 const fs = require('fs/promises');
 const path = require('path');
 
-test('MongoDB API persistence, authorization, evaluation limits, and anonymity', {
-  skip: process.env.MONGODB_INTEGRATION_TESTS !== 'true'
-    ? 'Set MONGODB_INTEGRATION_TESTS=true to run against the configured MongoDB database.'
+test('MySQL-backed API persistence, authorization, evaluation limits, and anonymity', {
+  skip: process.env.MYSQL_INTEGRATION_TESTS !== 'true'
+    ? 'Set MYSQL_INTEGRATION_TESTS=true and use a dedicated *_test database.'
     : false
 }, async () => {
+  if (!/_test$/i.test(process.env.MYSQL_DATABASE || '')) {
+    throw new Error('Integration tests refuse to run unless MYSQL_DATABASE ends in _test.');
+  }
   const bcrypt = require('bcryptjs');
-  const { connectDatabase, mongoose } = require('../backend/config/db');
+  const { connectDatabase, closePool } = require('../backend/config/mysql');
+  const { migrate } = require('../backend/scripts/migrate-mysql');
   const models = require('../backend/models');
   const { app } = require('../backend/app');
   const created = {
@@ -54,13 +58,14 @@ test('MongoDB API persistence, authorization, evaluation limits, and anonymity',
       ['SurveyQuestion', created.questions],
       ['ClassSection', created.classes],
       ['Course', created.courses],
-      ['Lecturer', created.lecturers],
-      ['User', created.users]
+      ['User', created.users],
+      ['Lecturer', created.lecturers]
     ];
-    await Promise.all(removals.filter(([, ids]) => ids.length)
-      .map(([modelName, ids]) => models[modelName].deleteMany({ _id: { $in: ids } })));
+    for (const [modelName, ids] of removals) {
+      if (ids.length) await models[modelName].deleteMany({ _id: { $in: ids } });
+    }
     await stopServer();
-    await mongoose.disconnect();
+    await closePool();
   }
 
   async function startServer() {
@@ -81,6 +86,7 @@ test('MongoDB API persistence, authorization, evaluation limits, and anonymity',
   }
 
   try {
+    await migrate();
     await connectDatabase();
     await startServer();
     const token = `${Date.now()}${Math.floor(Math.random() * 1000000)}`;

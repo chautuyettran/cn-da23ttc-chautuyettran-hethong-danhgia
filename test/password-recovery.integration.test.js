@@ -3,15 +3,19 @@ const assert = require('node:assert/strict');
 
 require('dotenv').config();
 
-test('MongoDB-backed student recovery validates identity, CAPTCHA, SMS OTP, and one-time password reset', {
-  skip: process.env.MONGODB_INTEGRATION_TESTS !== 'true'
-    ? 'Set MONGODB_INTEGRATION_TESTS=true to run against the configured MongoDB database.'
+test('MySQL-backed student recovery validates identity, CAPTCHA, SMS OTP, and one-time password reset', {
+  skip: process.env.MYSQL_INTEGRATION_TESTS !== 'true'
+    ? 'Set MYSQL_INTEGRATION_TESTS=true and use a dedicated *_test database.'
     : false
 }, async () => {
+  if (!/_test$/i.test(process.env.MYSQL_DATABASE || '')) {
+    throw new Error('Integration tests refuse to run unless MYSQL_DATABASE ends in _test.');
+  }
   const express = require('express');
   const bcrypt = require('bcryptjs');
   const { once } = require('node:events');
-  const { connectDatabase, mongoose } = require('../backend/config/db');
+  const { connectDatabase, closePool } = require('../backend/config/mysql');
+  const { migrate } = require('../backend/scripts/migrate-mysql');
   const models = require('../backend/models');
   const authRoutes = require('../backend/routes/auth');
   const { createRecoveryRouter } = require('../backend/routes/recovery');
@@ -74,10 +78,11 @@ test('MongoDB-backed student recovery validates identity, CAPTCHA, SMS OTP, and 
     }
     await models.RecoveryThrottle.deleteMany({ key: { $in: [...rateKeys] } });
     await closeServer();
-    await mongoose.disconnect();
+    await closePool();
   }
 
   try {
+    await migrate();
     await connectDatabase();
     const user = await models.User.create({
       full_name: 'Password recovery integration student',

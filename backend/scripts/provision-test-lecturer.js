@@ -1,6 +1,7 @@
 require('dotenv').config();
 
-const { connectDatabase, mongoose } = require('../config/db');
+const { connectDatabase, closePool } = require('../config/mysql');
+const { migrate } = require('./migrate-mysql');
 const { User, Lecturer } = require('../models');
 const {
   readTestLecturerConfiguration, provisionTestLecturer
@@ -8,6 +9,7 @@ const {
 
 async function main() {
   readTestLecturerConfiguration(process.env);
+  await migrate();
   await connectDatabase();
   await Promise.all([User.createIndexes(), Lecturer.createIndexes()]);
   const { created, activated } = await provisionTestLecturer(User, Lecturer, process.env);
@@ -25,4 +27,4 @@ main()
     console.error('Không thể provision tài khoản giảng viên kiểm thử:', error.message);
     process.exitCode = 1;
   })
-  .finally(() => mongoose.disconnect());
+  .finally(() => closePool());

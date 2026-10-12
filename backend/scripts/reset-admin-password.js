@@ -1,6 +1,7 @@
 require('dotenv').config();
 
-const { connectDatabase, mongoose } = require('../config/db');
+const { connectDatabase, closePool } = require('../config/mysql');
+const { migrate } = require('./migrate-mysql');
 const { User } = require('../models');
 const {
   readAdministratorPasswordConfiguration, resetAdministratorPassword
@@ -11,6 +12,7 @@ async function main() {
     throw new Error('Đặt lại mật khẩu là thao tác tường minh; chạy lệnh với cờ --confirm.');
   }
   readAdministratorPasswordConfiguration(process.env);
+  await migrate();
   await connectDatabase();
   await resetAdministratorPassword(User, process.env, process.argv.includes('--confirm'));
   console.log('Đã đặt lại mật khẩu cho tài khoản quản trị; mật khẩu đã được băm bằng bcrypt.');
@@ -21,4 +23,4 @@ main()
     console.error('Không thể đặt lại mật khẩu quản trị:', error.message);
     process.exitCode = 1;
   })
-  .finally(() => mongoose.disconnect());
+  .finally(() => closePool());

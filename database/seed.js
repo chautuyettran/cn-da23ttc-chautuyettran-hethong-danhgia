@@ -1,7 +1,8 @@
 require('dotenv').config();
 
 const bcrypt = require('bcryptjs');
-const { connectDatabase, mongoose } = require('../backend/config/db');
+const { connectDatabase, closePool } = require('../backend/config/mysql');
+const { migrate } = require('../backend/scripts/migrate-mysql');
 const models = require('../backend/models');
 const { provisionStudentAccount } = require('../backend/services/student-provisioning');
 const { normalizeEmail, studentIdFromEmail } = require('../backend/validators/account');
@@ -11,8 +12,11 @@ async function upsert(Model, filter, update) {
 }
 
 async function main() {
+  await migrate();
   await connectDatabase();
-  await Promise.all(Object.values(models).map((model) => model.createIndexes()));
+  await Promise.all(Object.values(models)
+    .filter((model) => typeof model.createIndexes === 'function')
+    .map((model) => model.createIndexes()));
   const minReportResponses = Number(process.env.MIN_REPORT_RESPONSES || 5);
   if (!Number.isInteger(minReportResponses) || minReportResponses < 1 || minReportResponses > 1000) {
     throw new Error('MIN_REPORT_RESPONSES must be an integer between 1 and 1000.');
@@ -92,4 +96,4 @@ main()
     console.error('Không thể tạo dữ liệu minh họa:', error.message);
     process.exitCode = 1;
   })
-  .finally(() => mongoose.disconnect());
+  .finally(() => closePool());

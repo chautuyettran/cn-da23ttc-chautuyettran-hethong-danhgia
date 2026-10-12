@@ -1,6 +1,7 @@
 require('dotenv').config();
 
-const { connectDatabase, mongoose } = require('../config/db');
+const { connectDatabase, closePool } = require('../config/mysql');
+const { migrate } = require('./migrate-mysql');
 const { User } = require('../models');
 const {
   readTestLecturerConfiguration, resetTestLecturerPassword
@@ -12,6 +13,7 @@ async function main() {
   if (!confirmed) {
     throw new Error('Để đặt lại mật khẩu, chạy lệnh với cờ --confirm.');
   }
+  await migrate();
   await connectDatabase();
   await User.createIndexes();
   const result = await resetTestLecturerPassword(User, process.env, confirmed);
@@ -23,4 +25,4 @@ main()
     console.error('Không thể đặt lại mật khẩu tài khoản giảng viên kiểm thử:', error.message);
     process.exitCode = 1;
   })
-  .finally(() => mongoose.disconnect());
+  .finally(() => closePool());

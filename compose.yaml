@@ -1,4 +1,23 @@
 services:
+  mysql:
+    image: mysql:8.4
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?Set MYSQL_ROOT_PASSWORD in .env.mysql}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-teaching_quality}
+      MYSQL_USER: ${MYSQL_APP_USERNAME:?Set MYSQL_APP_USERNAME in .env.mysql}
+      MYSQL_PASSWORD: ${MYSQL_APP_PASSWORD:?Set MYSQL_APP_PASSWORD in .env.mysql}
+    volumes:
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping --host=127.0.0.1 --silent"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 20s
+    networks:
+      - app_network
+
   mongo:
     image: mongo:8.0
     restart: unless-stopped
@@ -47,7 +66,12 @@ services:
     environment:
       NODE_ENV: production
       PORT: 3000
-      MONGODB_URI: "mongodb://${MONGO_APP_USERNAME}:${MONGO_APP_PASSWORD}@mongo:27017/teaching_quality?authSource=teaching_quality&replicaSet=rs0"
+      MYSQL_HOST: mysql
+      MYSQL_PORT: 3306
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-teaching_quality}
+      MYSQL_USER: ${MYSQL_APP_USERNAME:?Set MYSQL_APP_USERNAME in .env.mysql}
+      MYSQL_PASSWORD: ${MYSQL_APP_PASSWORD:?Set MYSQL_APP_PASSWORD in .env.mysql}
+      MYSQL_POOL_SIZE: ${MYSQL_POOL_SIZE:-10}
       JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in .env}
       COOKIE_SECURE: ${COOKIE_SECURE:-false}
       MIN_REPORT_RESPONSES: ${MIN_REPORT_RESPONSES:-5}
@@ -65,7 +89,7 @@ services:
     ports:
       - "${PORT:-3000}:3000"
     depends_on:
-      mongo:
+      mysql:
         condition: service_healthy
     healthcheck:
       test:
@@ -89,13 +113,17 @@ services:
     restart: "no"
     environment:
       NODE_ENV: production
-      MONGODB_URI: "mongodb://${MONGO_APP_USERNAME}:${MONGO_APP_PASSWORD}@mongo:27017/teaching_quality?authSource=teaching_quality&replicaSet=rs0"
+      MYSQL_HOST: mysql
+      MYSQL_PORT: 3306
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-teaching_quality}
+      MYSQL_USER: ${MYSQL_APP_USERNAME:?Set MYSQL_APP_USERNAME in .env.mysql}
+      MYSQL_PASSWORD: ${MYSQL_APP_PASSWORD:?Set MYSQL_APP_PASSWORD in .env.mysql}
       ADMIN_NAME: ${ADMIN_NAME:-}
       ADMIN_EMAIL: ${ADMIN_EMAIL:-}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
     command: ["npm", "run", "provision-admin"]
     depends_on:
-      mongo:
+      mysql:
         condition: service_healthy
     networks:
       - app_network
@@ -109,14 +137,18 @@ services:
     restart: "no"
     environment:
       NODE_ENV: production
-      MONGODB_URI: "mongodb://${MONGO_APP_USERNAME}:${MONGO_APP_PASSWORD}@mongo:27017/teaching_quality?authSource=teaching_quality&replicaSet=rs0"
+      MYSQL_HOST: mysql
+      MYSQL_PORT: 3306
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-teaching_quality}
+      MYSQL_USER: ${MYSQL_APP_USERNAME:?Set MYSQL_APP_USERNAME in .env.mysql}
+      MYSQL_PASSWORD: ${MYSQL_APP_PASSWORD:?Set MYSQL_APP_PASSWORD in .env.mysql}
       LECTURER_NAME: ${LECTURER_NAME:-}
       LECTURER_EMAIL: ${LECTURER_EMAIL:-}
       LECTURER_PASSWORD: ${LECTURER_PASSWORD:-}
       LECTURER_DEPARTMENT: ${LECTURER_DEPARTMENT:-}
     command: ["npm", "run", "provision-lecturer"]
     depends_on:
-      mongo:
+      mysql:
         condition: service_healthy
     networks:
       - app_network
@@ -130,13 +162,17 @@ services:
     restart: "no"
     environment:
       NODE_ENV: production
-      MONGODB_URI: "mongodb://${MONGO_APP_USERNAME}:${MONGO_APP_PASSWORD}@mongo:27017/teaching_quality?authSource=teaching_quality&replicaSet=rs0"
+      MYSQL_HOST: mysql
+      MYSQL_PORT: 3306
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-teaching_quality}
+      MYSQL_USER: ${MYSQL_APP_USERNAME:?Set MYSQL_APP_USERNAME in .env.mysql}
+      MYSQL_PASSWORD: ${MYSQL_APP_PASSWORD:?Set MYSQL_APP_PASSWORD in .env.mysql}
       TEST_LECTURER_PASSWORD: ${TEST_LECTURER_PASSWORD:-}
       TEST_LECTURER_NAME: ${TEST_LECTURER_NAME:-}
       TEST_LECTURER_DEPARTMENT: ${TEST_LECTURER_DEPARTMENT:-}
     command: ["npm", "run", "provision-test-lecturer"]
     depends_on:
-      mongo:
+      mysql:
         condition: service_healthy
     networks:
       - app_network
@@ -150,18 +186,23 @@ services:
     restart: "no"
     environment:
       NODE_ENV: production
-      MONGODB_URI: "mongodb://${MONGO_APP_USERNAME}:${MONGO_APP_PASSWORD}@mongo:27017/teaching_quality?authSource=teaching_quality&replicaSet=rs0"
+      MYSQL_HOST: mysql
+      MYSQL_PORT: 3306
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-teaching_quality}
+      MYSQL_USER: ${MYSQL_APP_USERNAME:?Set MYSQL_APP_USERNAME in .env.mysql}
+      MYSQL_PASSWORD: ${MYSQL_APP_PASSWORD:?Set MYSQL_APP_PASSWORD in .env.mysql}
       TEST_LECTURER_PASSWORD: ${TEST_LECTURER_PASSWORD:-}
       TEST_LECTURER_NAME: ${TEST_LECTURER_NAME:-}
       TEST_LECTURER_DEPARTMENT: ${TEST_LECTURER_DEPARTMENT:-}
     command: ["npm", "run", "reset-test-lecturer-password", "--", "--confirm"]
     depends_on:
-      mongo:
+      mysql:
         condition: service_healthy
     networks:
       - app_network
 
 volumes:
+  mysql_data:
   mongo_data:
   student_avatar_data:
 
