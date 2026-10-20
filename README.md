@@ -49,6 +49,10 @@ Câu hỏi bổ sung do giảng viên tạo chỉ thuộc phân công hoặc kh�
 
 Express now uses MySQL (`teaching_quality`). Copy `.env.mysql.example` to the ignored local file `.env.mysql` and set independent MySQL root and application credentials there; do not reuse MongoDB passwords. Supply both environment files to Compose as shown above. MySQL's `mysql_data` is separate from MongoDB's `mongo_data`; neither volume is removed or reset by the application. The backend applies the versioned, additive MySQL schema migration at startup.
 
+For SQL Server Management Studio, `database/sqlserver-schema.sql` is a standalone T-SQL version of the schema that creates a separate `teaching_quality` SQL Server database. Running it does not switch the Express backend from MySQL, connect the application to SQL Server, or copy data between databases.
+
+MySQL variables are intentionally optional during Compose file parsing so read-only commands such as `docker compose ps` can inspect existing containers without MySQL credentials. This does not make the MySQL service usable without credentials: the MySQL image will refuse initialization and the backend checks its connection settings. Include both `.env` and `.env.mysql` for commands that start the MySQL-backed app or run provisioning.
+
 Changing a Compose environment variable does not rotate credentials already initialized inside an existing MySQL data volume. MongoDB data remains in its existing volume as a backup, but the new application does not read MongoDB and this change does not copy MongoDB records into MySQL. Provision required accounts and seed/demo data in MySQL, or complete and verify a deliberate data-import procedure before relying on the MySQL-backed application. Do not remove either volume.
 
 For configuration-only validation that does not start containers or print resolved secrets:
